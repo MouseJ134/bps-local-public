@@ -133,7 +133,7 @@ class SSEErrorObserver:
         self._event_bytes = 0
         self._line_has_content = False
         self._discard = False
-        self._skip_lf = False
+        self._pending_cr = False
         self._first_line = True
         self._finished = False
         self._errors = []
@@ -152,26 +152,35 @@ class SSEErrorObserver:
             if not chunk:
                 return
             start = 0
-            if self._skip_lf:
+            if self._pending_cr:
+                self._pending_cr = False
                 if chunk.startswith(b"\n"):
+                    self._end_line(2)
                     start = 1
-                self._skip_lf = False
+                else:
+                    self._end_line(1)
             for match in _LINE_END.finditer(chunk, start):
                 self._append(chunk, start, match.start())
-                self._end_line(len(match.group()))
                 start = match.end()
                 if match.group() == b"\r" and start == len(chunk):
-                    self._skip_lf = True
+                    # Defer dispatch until CR vs CRLF is known, so both bytes
+                    # are charged to the same event even at a chunk boundary.
+                    self._pending_cr = True
+                else:
+                    self._end_line(len(match.group()))
             self._append(chunk, start, len(chunk))
         except Exception:
             # Observation never owns the HTTP response. Do not expose the error.
             self._skipped_events = _increment(self._skipped_events)
             self._clear_event()
-            self._skip_lf = False
+            self._pending_cr = False
 
     def finish(self) -> dict:
         if not self._finished:
             try:
+                if self._pending_cr:
+                    self._pending_cr = False
+                    self._end_line(1)
                 if self._line_has_content:
                     self._end_line(0)
                 if self._discard or self._data:
@@ -180,6 +189,7 @@ class SSEErrorObserver:
                 self._skipped_events = _increment(self._skipped_events)
             finally:
                 self._clear_event()
+                self._pending_cr = False
                 self._finished = True
         return {
             "errors": [dict(item) for item in self._errors],

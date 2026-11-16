@@ -37,6 +37,14 @@ def observe(raw, chunks=None, *, allowed_tool_names=()):
     return observer.finish()
 
 
+def padded_failure(size, *, ending=b"\r\n\r\n"):
+    event = failure(newline="\r\n", complete=False) + ending
+    padding = size - len(event) - 3  # Comment colon plus CRLF.
+    if padding < 0:
+        raise ValueError("event_size_too_small")
+    return b":" + b"x" * padding + b"\r\n" + event
+
+
 class SSEErrorObserverTests(unittest.TestCase):
     def test_schema_failure_has_no_inferred_tool_or_field(self):
         summary = observe(failure(SCHEMA_MESSAGE + "; tool=synthetic_secret; path=arguments.secret"))
@@ -140,6 +148,56 @@ class SSEErrorObserverTests(unittest.TestCase):
         summary = observe(oversized + failure(OUTSIDE_MESSAGE), 17)
         self.assertEqual((summary["error_events"], summary["skipped_events"]), (1, 1))
         self.assertEqual(summary["errors"][0]["tool"], "update_plan")
+
+    def test_crlf_event_byte_boundary_is_independent_of_chunks(self):
+        for size in (MAX_EVENT_BYTES - 1, MAX_EVENT_BYTES, MAX_EVENT_BYTES + 1):
+            raw = padded_failure(size)
+            expected = (1, 0) if size <= MAX_EVENT_BYTES else (0, 1)
+            for chunks in (None, 1, 2, 3, 7, 64, MAX_EVENT_BYTES):
+                with self.subTest(size=size, chunks=chunks):
+                    summary = observe(raw, chunks)
+                    self.assertEqual((summary["error_events"], summary["skipped_events"]), expected)
+
+    def test_split_crlf_and_empty_chunks_preserve_event_budget(self):
+        for size in (MAX_EVENT_BYTES - 1, MAX_EVENT_BYTES, MAX_EVENT_BYTES + 1):
+            raw = padded_failure(size)
+            expected = (1, 0) if size <= MAX_EVENT_BYTES else (0, 1)
+            splits = [index + 1 for index, value in enumerate(raw[:-1])
+                      if value == 13 and raw[index + 1] == 10]
+            for split in splits:
+                with self.subTest(size=size, split=split):
+                    observer = SSEErrorObserver()
+                    observer.feed(raw[:split])
+                    observer.feed(b"")
+                    observer.feed(raw[split:])
+                    summary = observer.finish()
+                    self.assertEqual((summary["error_events"], summary["skipped_events"]), expected)
+
+    def test_eof_lone_cr_counts_toward_event_budget(self):
+        for ending in (b"\r", b"\r\n\r"):
+            for size in (MAX_EVENT_BYTES - 1, MAX_EVENT_BYTES, MAX_EVENT_BYTES + 1):
+                raw = padded_failure(size, ending=ending)
+                expected = (1, 0) if size <= MAX_EVENT_BYTES else (0, 1)
+                for chunks in (None, 1, 7):
+                    with self.subTest(ending=ending, size=size, chunks=chunks):
+                        summary = observe(raw, chunks)
+                        self.assertEqual((summary["error_events"], summary["skipped_events"]), expected)
+
+    def test_oversize_split_crlf_recovers_at_next_event(self):
+        raw = padded_failure(MAX_EVENT_BYTES + 1) + failure(OUTSIDE_MESSAGE, newline="\r\n")
+        for chunks in (None, 1, 2, 7, MAX_EVENT_BYTES):
+            with self.subTest(chunks=chunks):
+                summary = observe(raw, chunks)
+                self.assertEqual((summary["error_events"], summary["skipped_events"]), (1, 1))
+                self.assertEqual(summary["errors"][0]["tool"], "update_plan")
+
+    def test_adjacent_exact_limit_events_charge_crlf_to_correct_event(self):
+        raw = padded_failure(MAX_EVENT_BYTES) * 2
+        for chunks in (None, 1, 7, MAX_EVENT_BYTES - 1, MAX_EVENT_BYTES):
+            with self.subTest(chunks=chunks):
+                summary = observe(raw, chunks)
+                self.assertEqual((summary["error_events"], summary["skipped_events"]), (2, 0))
+                self.assertEqual(summary["errors"][0]["count"], 2)
 
     def test_many_data_lines_cannot_bypass_event_budget(self):
         oversized = b'event: error\n' + b'data: ' + b'x' * 1024 + b'\n'
