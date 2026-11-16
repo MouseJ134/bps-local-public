@@ -1,6 +1,6 @@
 # 工具接口契约
 
-本文描述独立 Python 请求适配器 `0.6.0-dev.1` 的行为。版本号属于此适配器，不代表 CPA-BPS 插件发布，也不代表 `cpa-bps.so` 的源码已修改。
+本文描述独立 Python 请求适配器 `0.6.0-dev.2` 的行为。版本号属于此适配器，不代表 CPA-BPS 插件发布，也不代表 `cpa-bps.so` 的源码已修改。
 
 ## 调用链
 
@@ -51,6 +51,18 @@ Responses 客户端 → 本地认证/请求适配器 → 已配置的本地 BPS 
 
 任务 profile 仅允许 `generic`、`software_development`、`study_notes`、`document_creation`；通过显式 session 映射选择，未映射时使用 `generic`。不从聊天内容猜测任务，不扩大原目标或权限。
 
+## 选定工具的参数契约补充
+
+策略 v3 可通过 `parameter_tools_by_session` 显式指定 session 对应的精确 function 工具名。session 必须在策略名单内，请求模型也必须匹配；`all_bps` 不会使未映射 session 自动获得参数补充。v1/v2、禁用策略和未映射 session 均不启用此功能。
+
+收集器从本次真实目录取得每个选择项的完整规范化验证契约，生成确定性 JSON 和 SHA-256。每 session 最多 8 项，总补充文本最多 16 KiB。列表重复、声明缺失、非 function、契约冲突/歧义、请求解码或资源预算失败时，不添加参数补充。相同契约在目录中重复声明仍遵循既有收集器的去重规则。
+
+补充是独立的 developer 消息，既有目录提醒不会将其抑制。完全相同的消息不重复追加；选择或 schema 改变时追加当前版本，不替换旧历史。参数提示只要求遵守当前字段名、类型、required 和其他约束，不进行别名映射、类型强制转换或自动重试。
+
+例如，若当前 schema 要求 `target` 与 `message` 且禁止额外字段，模型提交 `agent_name` 与 `task` 会同时违反 required 和 additionalProperties。此例说明一种 schema/resource 错误来源，不能据此将所有同文错误归因为字段名，也不能将字符串长度误认为已触发资源限制。
+
+认证发生在补充之前；目录提醒与参数提醒顺序处理时会同步清理已解压请求的 Content-Encoding/Content-Length。完整性保护、范围检查和有界 gzip/zstd 解码继续生效。响应原字节及工具调用/结果不被改写。
+
 ## 工具结果配对
 
 此公开版本不包含特定聊天的历史修补。`function_call_output` 必须对应真实调用及其 `call_id`；引用文本、跨聊天提示和工具成功结果不能互相替代。对于 `missing_tool_call`，应由产生请求的客户端恢复完整且真实的调用/结果链。适配器不凭空生成调用、ID 或成功状态，不删除任意历史项来掩盖问题。
@@ -69,7 +81,7 @@ Responses 客户端 → 本地认证/请求适配器 → 已配置的本地 BPS 
 | `request_unsupported` | 其他已知请求不支持错误 |
 | `unknown_error` | 已识别错误事件，但无法安全细分 |
 
-每事件上限 64 KiB、错误正文上限 8 KiB、去重错误桶上限 32；计数饱和而不无限增长。日志仅包含固定分类/代码、计数以及允许的有限字段。默认只允许输出 `update_plan`、`list_connectors`、`run_officejs` 及其 `functions.` 形式；未知工具名被省略。绝不输出原始错误正文、参数、结果、凭据或聊天文本。
+每事件上限 64 KiB、错误正文上限 8 KiB、去重错误桶上限 32；跨网络分片的 CRLF 仍按连续 SSE 事件累计预算，不会因分隔符被拆分而重置上限。计数饱和而不无限增长。日志仅包含固定分类/代码、计数以及允许的有限字段。默认只允许输出 `update_plan`、`list_connectors`、`run_officejs` 及其 `functions.` 形式；未知工具名被省略。绝不输出原始错误正文、参数、结果、凭据或聊天文本。
 
 当核心只给出笼统的 schema/resource 错误，适配器不会反推具体工具、字段路径或错误参数。诊断分类、单元测试通过、真实上游成功和生产部署是不同证据，应分别报告。
 

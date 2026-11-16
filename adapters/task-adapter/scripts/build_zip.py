@@ -8,13 +8,14 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_FILES = (
-    "README.md", "VERSION", "requirements.txt", "run_tests.py",
+    "README.md", "CHANGELOG.md", "VERSION", "requirements.txt", "run_tests.py",
     "docs/INTERFACE_CONTRACT.md", "docs/SECURITY.md",
     "src/auth_bridge.py", "src/catalog_compat.py", "src/error_observer.py",
-    "src/request_codec.py", "src/task_profiles.py", "src/tool_contracts.py",
+    "src/request_codec.py", "src/schema_contract_compat.py", "src/task_profiles.py", "src/tool_contracts.py",
     "src/tool_contract_policy.json", "src/tool_contract_policy.example.json",
     "tests/test_bridge_integration.py", "tests/test_error_observer.py",
     "tests/test_task_profiles.py", "tests/test_tool_contracts.py", "tests/test_packaging.py",
+    "tests/test_schema_contract_compat.py", "tests/test_schema_guard_bridge.py",
     "scripts/build_zip.py", "scripts/smoke_zip.py",
 )
 
@@ -24,6 +25,15 @@ def normalized_bytes(path):
         raise ValueError("Only regular source files can be packaged")
     return path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
 
+def require_disabled_default_policy(raw):
+    try:
+        policy = json.loads(raw)
+    except (ValueError, TypeError, UnicodeError) as exc:
+        raise ValueError("Default source policy must be valid JSON") from exc
+    if not isinstance(policy, dict) or policy.get("enabled") is not False:
+        raise ValueError("Default source policy must be disabled")
+
+
 def build(root=ROOT, output=None):
     root = Path(root).resolve()
     output = Path(output) if output is not None else root / "dist"
@@ -31,6 +41,7 @@ def build(root=ROOT, output=None):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*", version):
         raise ValueError("Invalid adapter version")
     files = {name: normalized_bytes(root / name) for name in PACKAGE_FILES}
+    require_disabled_default_policy(files["src/tool_contract_policy.json"])
     license_file = root / "LICENSE"
     if not license_file.exists(): license_file = root.parents[1] / "LICENSE"
     files["LICENSE"] = normalized_bytes(license_file)

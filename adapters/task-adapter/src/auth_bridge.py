@@ -22,6 +22,7 @@ import sys
 import time
 
 from catalog_compat import add_catalog_guard
+from schema_contract_compat import add_parameter_guard
 from error_observer import SSEErrorObserver
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, DummyCookieJar, TCPConnector, web
@@ -223,6 +224,7 @@ async def handle(request: web.Request) -> web.StreamResponse:
     transport = "websocket" if request.headers.get("Upgrade", "").lower() == "websocket" else "http"
     prepared_response = None
     catalog_guard_added = 0
+    parameter_guard_added = 0
     catalog_diagnostics = {}
     error_observer = None
     observer_fault = False
@@ -267,12 +269,20 @@ async def handle(request: web.Request) -> web.StreamResponse:
         headers = upstream_headers(request.headers, upstream_key)
         # Prompt-only guard: call/result identities and all existing input
         # entries are preserved. No historical context or missing-call repair.
+        compat_headers = request.headers.copy()
         body, catalog_guard_added = add_catalog_guard(
-            body, request.headers, request.method, request.path,
+            body, compat_headers, request.method, request.path,
             max_body_bytes=MAX_BODY_BYTES, diagnostics=catalog_diagnostics,
             policy_path=settings.policy_file,
         )
         if catalog_guard_added:
+            compat_headers.popall("Content-Encoding", None)
+            compat_headers.popall("Content-Length", None)
+        body, parameter_guard_added = add_parameter_guard(
+            body, compat_headers, request.method, request.path,
+            max_body_bytes=MAX_BODY_BYTES, policy_path=settings.policy_file,
+        )
+        if catalog_guard_added or parameter_guard_added:
             headers.popall("Content-Encoding", None)
             headers.popall("Content-Length", None)
         async with request.app[SESSION_KEY].request(
@@ -338,6 +348,7 @@ async def handle(request: web.Request) -> web.StreamResponse:
               "transport": transport, "status": status, "request_bytes": received,
               "response_bytes": sent,
               "catalog_guard_added": catalog_guard_added,
+              "parameter_guard_added": bool(parameter_guard_added),
               "tool_contract_reason": catalog_diagnostics.get("reason", "not_evaluated"),
               "tool_catalog_count": catalog_diagnostics.get("catalog_count", 0),
               "tool_catalog_hash": catalog_diagnostics.get("catalog_hash", ""),

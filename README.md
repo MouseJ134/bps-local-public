@@ -60,7 +60,7 @@ Windows 构建使用 `go build -o bps-local.exe ./cmd/bps-local`。附带的启�
 
 ## 可选任务适配器
 
-[`adapters/task-adapter`](adapters/task-adapter/README.md) 提供独立的 Python 前置代理：核对客户端工具清单、补充接口约束提示，并对流式错误生成脱敏分类。开发版本与 CPA-BPS 插件版本独立；不会自动部署、同步上游执行器或补造缺失的工具调用记录。
+[`adapters/task-adapter`](adapters/task-adapter/README.md) 提供独立的 Python 前置代理：核对客户端工具清单、按显式配置补充完整参数契约，并对流式错误生成脱敏分类。开发版本与 CPA-BPS 插件版本独立；不会自动部署、同步上游执行器或补造缺失的工具调用记录。
 
 ## 许可与来源
 

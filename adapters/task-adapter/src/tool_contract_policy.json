@@ -1,8 +1,9 @@
 {
-  "version": 2,
+  "version": 3,
   "enabled": false,
   "scope": "session_ids",
   "session_ids": [],
   "models": [],
-  "profile_by_session": {}
+  "profile_by_session": {},
+  "parameter_tools_by_session": {}
 }

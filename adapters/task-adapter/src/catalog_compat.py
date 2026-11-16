@@ -14,6 +14,7 @@ from task_profiles import PROFILE_NAMES, profile_reminder
 
 POLICY_PATH = Path(__file__).with_name("tool_contract_policy.json")
 MAX_POLICY_BYTES = 16384
+MAX_PARAMETER_TOOLS_PER_SESSION = 8
 _POLICY_CACHE = (None, None)
 MAX_GUARD_TEXT_BYTES = 32 * 1024
 GUARD_MARKER = "[CPA-BPS shared client tool contract reminder v3]"
@@ -69,13 +70,15 @@ def _parse_policy(raw):
         if not isinstance(p, dict):
             return None
         version = p.get("version", 1)
-        if type(version) is not int or version not in (1, 2):
+        if type(version) is not int or version not in (1, 2, 3):
             return None
         required = {"enabled", "scope", "session_ids", "models"}
         optional = {"version"} if version == 1 else {"version", "profile_by_session"}
+        if version == 3:
+            required |= {"version", "parameter_tools_by_session"}
         if not required.issubset(p) or set(p) - required - optional:
             return None
-        if version == 2 and "version" not in p:
+        if version >= 2 and "version" not in p:
             return None
         if p["enabled"] is not True or p["scope"] not in ("session_ids", "all_bps"):
             return None
@@ -96,8 +99,20 @@ def _parse_policy(raw):
         if any(session not in p["session_ids"] or not isinstance(profile, str) or profile not in PROFILE_NAMES
                for session, profile in profiles.items()):
             return None
+        parameter_tools = p.get("parameter_tools_by_session", {})
+        if not isinstance(parameter_tools, dict) or len(parameter_tools) > 256:
+            return None
+        for session, names in parameter_tools.items():
+            if session not in p["session_ids"] or not isinstance(names, list) or not 1 <= len(names) <= MAX_PARAMETER_TOOLS_PER_SESSION:
+                return None
+            if any(not isinstance(name, str) or not name or len(name.encode("utf-8")) > 256
+                   or any(ord(c) < 32 or ord(c) == 127 for c in name) for name in names):
+                return None
+            if len(set(names)) != len(names):
+                return None
         return {"version": version, "scope": p["scope"], "session_ids": frozenset(p["session_ids"]),
-                "models": frozenset(p["models"]), "profile_by_session": dict(profiles)}
+                "models": frozenset(p["models"]), "profile_by_session": dict(profiles),
+                "parameter_tools_by_session": {session: tuple(names) for session, names in parameter_tools.items()}}
     except (ValueError, TypeError, UnicodeError, RecursionError):
         return None
 
