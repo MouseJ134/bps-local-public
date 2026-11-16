@@ -58,6 +58,10 @@ Windows 构建使用 `go build -o bps-local.exe ./cmd/bps-local`。附带的启�
 
 完整参数、上下文示例及故障排查见 [使用说明](docs/USAGE.md)。`--upstream-transport sse` 是源码保留的旧兼容选项，日常使用保持默认 `ws`。
 
+## 可选任务适配器
+
+[`adapters/task-adapter`](adapters/task-adapter/README.md) 提供独立的 Python 前置代理：核对客户端工具清单、按显式配置补充完整参数契约，并对流式错误生成脱敏分类。开发版本与 CPA-BPS 插件版本独立；不会自动部署、同步上游执行器或补造缺失的工具调用记录。
+
 ## 许可与来源
 
 项目许可、第三方声明及依赖许可原文统一见根目录 [LICENSE](LICENSE)。

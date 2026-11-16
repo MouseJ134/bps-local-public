@@ -1,0 +1,19 @@
+{
+  "version": 3,
+  "enabled": true,
+  "scope": "session_ids",
+  "session_ids": [
+    "example-session"
+  ],
+  "models": [
+    "YOUR_MODEL"
+  ],
+  "profile_by_session": {
+    "example-session": "software_development"
+  },
+  "parameter_tools_by_session": {
+    "example-session": [
+      "collaboration.followup_task"
+    ]
+  }
+}
