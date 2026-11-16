@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -102,8 +103,13 @@ func TestDeviceFlow(t *testing.T) {
 			if err = SaveDeviceCredentials(dest, creds); err != nil {
 				t.Fatal(err)
 			}
-			st, _ := os.Stat(dest)
-			if st.Mode().Perm() != 0600 {
+			st, err := os.Stat(dest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Windows exposes the read-only attribute through Mode, not POSIX permissions.
+			// Keep the 0600 assertion on systems where those bits represent access.
+			if runtime.GOOS != "windows" && st.Mode().Perm() != 0600 {
 				t.Fatal("unsafe mode")
 			}
 			store, err := Load(dest)

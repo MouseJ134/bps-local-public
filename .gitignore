@@ -36,3 +36,11 @@ __pycache__/
 /runtime/
 /auths/
 /.bps-local/
+
+# Optional Python task adapter build/runtime output
+/adapters/task-adapter/.venv/
+/adapters/task-adapter/dist/
+/adapters/task-adapter/build/
+/adapters/task-adapter/coverage.xml
+/adapters/task-adapter/.coverage
+/adapters/task-adapter/tool-contract-policy.local.json

@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "enabled": true,
+  "scope": "session_ids",
+  "session_ids": [
+    "example-session"
+  ],
+  "models": [
+    "YOUR_MODEL"
+  ],
+  "profile_by_session": {
+    "example-session": "software_development"
+  }
+}
